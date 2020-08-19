@@ -190,48 +190,45 @@ namespace KinKal {
     }
   }
 
-  IPHelix::DVEC IPHelix::momDeriv(double time, LocalBasis::LocDir mdir) const
-  {
-    // compute some useful quantities
-    double tanval = tanDip();
-    double cosval = cosDip();
+  IPHelix::DPDV LHelix::dPardMLoc(double time) const {
+    // euclidean space is column, parameter space is row
     double omval = omega();
-    double l = translen(CLHEP::c_light * beta() * (time - t0()));
-    double d0val = d0();
-    DVEC pder;
-    // cases
-    switch ( mdir ) {
-      case LocalBasis::perpdir:
-        // polar bending: only momentum and position are unchanged
-        pder[d0_] = tanval*(1-cos(omval*l))/omval;
-        pder[phi0_] = -tanval * sin(omval * l) / (1 + omval * d0val);
-        pder[omega_] = omval * tanval;
-        pder[z0_] = - l - tanval * tanval * sin(omval * l) / (omval * (1 + omval * d0val));
-        pder[tanDip_] = 1 / (cosval * cosval);
-        pder[t0_] = pder[z0_] / vz() + pder[tanDip_] * (time - t0()) * cosval * cosval / tanval;
-        break;
-      case LocalBasis::phidir:
-        // Azimuthal bending: R, Lambda, t0 are unchanged
-        pder[d0_] = -sin(omval * l) / (omval * cosval);
-        pder[phi0_] = cos(omval * l) / (cosval * (1 + omval * d0val));
-        pder[omega_] = 0;
-        pder[z0_] = -tanval / (omval * cosval) * (1 - cos(omval * l) / (1 + omval * d0val));
-        pder[tanDip_] = 0;
-        pder[t0_] = pder[z0_] / vz();
-        break;
-      case LocalBasis::momdir:
-        // fractional momentum change: position and direction are unchanged
-        pder[d0_] = -(1 - cos(omval * l)) / omval;
-        pder[phi0_] = sin(omval * l) / (1 + omval * d0val);
-        pder[omega_] = -omval;
-        pder[z0_] = -tanval * (l - sin(omval * l) / (omval * (1 + omval * d0val)));
-        pder[tanDip_] = 0;
-        pder[t0_] = pder[z0_] / vz();
-        break;
-      default:
-        throw std::invalid_argument("Invalid direction");
-    }
-    return pder;
+    double dt = time-t0();
+    double dphi = omval*dt;
+    double phival = dphi + phi0();
+    double sphi = sin(phival);
+    double cphi = cos(phival);
+    double inve2 = 1.0/ebar2();
+    SVec3 T2(-sphi,cphi,0.0);
+    SVec3 T3(cphi,sphi,0.0);
+    SVec3 zdir(0.0,0.0,1.0);
+
+    SVec3 mdir = rad()*T3 + lam()*zdir;
+    SVec3 dR_dM = T3;
+    SVec3 dL_dM = zdir;
+    SVec3 dCx_dM (0.0,-1.0,0.0);
+    SVec3 dCy_dM (1.0,0.0,0.0);
+    SVec3 dphi0_dM = T2/rad() + (dphi/lam())*zdir;
+    SVec3 dt0_dM = -dt*(inve2*mdir - zdir/lam());
+    SVec3 domega_DM(-)
+    IPHelix::DPDV dPdM;
+    dPdM.Place_in_row(dd0_dM,d0_,0);
+    dPdM.Place_in_row(dphi0_dM,phi0_,0);
+    dPdM.Place_in_row(domega_DM,omega_,0);
+    dPdM.Place_in_row(dz0_dM,z0_,0);
+    dPdM.Place_in_row(dtanDip_dM,tanDip_,0);
+    dPdM.Place_in_row(dt0_dM,t0_,0);
+    dPdM *= 1.0/Q();
+    return dPdM;
+  }
+
+  // derivatives of momentum projected along the given basis WRT the 6 parameters, and the physical direction associated with that
+  IPHelix::DVEC LHelix::momDeriv(double time, LocalBasis::LocDir mdir) const {
+    typedef ROOT::Math::SVector<double,3> SVec3;
+    DPDV dPdM = dPardM(time);
+    auto dir = direction(time,mdir);
+    double mommag = momentumMag(time);
+    return mommag*(dPdM*SVec3(dir.X(), dir.Y(), dir.Z()));
   }
 
   std::ostream& operator <<(std::ostream& ost, IPHelix const& hhel) {

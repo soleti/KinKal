@@ -136,6 +136,13 @@ namespace KinKal {
       }
       //
     private :
+      // local coordinate system functions, used internally
+      Vec3 localDirection(double time, LocalBasis::LocDir mdir= LocalBasis::momdir) const;
+      Vec3 localMomentum(double time) const;
+      Vec3 localPosition(double time) const;
+      DPDV dPardXLoc(double time) const; // return the derivative of the parameters WRT the local (unrotated) position vector
+      DPDV dPardMLoc(double time) const; // return the derivative of the parameters WRT the local (unrotated) momentum vector
+      DSDP dPardStateLoc(double time) const; // derivative of parameters WRT local state
       TRange trange_;
       PDATA pars_; // parameters
       double mass_;  // in units of MeV/c^2
