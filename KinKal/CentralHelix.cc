@@ -202,8 +202,11 @@ namespace KinKal {
     double sang = sin(ang);
     double x = (sang - sphi0) / omega() - d0() * sphi0;
     double y = -(cang - cphi0) / omega() + d0() * cphi0;
-    double px = Q()/omega()*cang;
-    double py = Q()/omega()*sang;
+    MOM4 mom = momentum(time);
+    double px = mom.X();
+    double py = mom.Y();
+    double pz = mom.Z();
+    double E = mom.E();
     double phip = atan2(py,px);
     double cx = x-rho*sin(phip);
     double cy = y+rho*cos(phip);
@@ -211,24 +214,13 @@ namespace KinKal {
     double omval = omega();
     double tanval = tanDip();
 
-    // SVEC3 dz0_dM(0,0,0);
-    SVEC3 dt0_dM (CLHEP::c_light * beta() * cDip * Q() * Q() * sang,
-                  -CLHEP::c_light * beta() * cDip * Q() * Q() * cang,
-                  0);
     SVEC3 domega_dM (-omval*omval*cang, -omval*omval*sang, 0);
-    SVEC3 dtanDip_dM (-omval*cang*tanval, -omval*sang*tanval, omval);
+    SVEC3 dtanDip_dM (-omval*cang*tanval, -omval*sang*tanval, Q()/sqrt(px*px+py*py));
     SVEC3 dphi0_dM (cx/(cx*cx+cy*cy), cy/(cx*cx+cy*cy), 0);
 
     dphi0_dM /= Q();
     domega_dM /= Q();
     dtanDip_dM /= Q();
-
-    if( (cy*cphi0-cx*sphi0)*rho < 0.0 ){
-    // wrong angular momentum: fix
-      phi00 = phi00+CLHEP::pi;
-      sphi0 = -sphi0;
-      cphi0 = -cphi0;
-    }
 
     double drho_dPx = omval*px/(Q()*Q());
     double drho_dPy = omval*py/(Q()*Q());
@@ -241,15 +233,20 @@ namespace KinKal {
                    1./cphi0 * (cy*sphi0/cphi0 * dphi0_dM[1]) - drho_dPy,
                    0);
 
-    // SVEC3 dz0_dM(- dtanDip_dM[0]*(phip-phi00)/omval
-    //              + tanDip()*domega_dM[0]*(phip-phi00)/(omval*omval)
-    //              - tanDip()*(-omval/Q()*sang-dphi0_dM[0])/omval,
-    //              - dtanDip_dM[1]*(phip-phi00)/omval
-    //              + tanDip()*domega_dM[1]*(phip-phi00)/(omval*omval)
-    //              - tanDip()*(omval/Q()*cang-dphi0_dM[1])/omval,
-    //              dtanDip_dM[2]*(phip-phi00)/omval);
+    // double amsign = copysign(1.0, mbar());
+    SVEC3 dz0_dM(- dtanDip_dM[0]*(phip-phi00)/omval
+                 + tanDip()*domega_dM[0]*(phip-phi00)/(omval*omval)
+                 - tanDip()*(-py/(py*py+px*px)-dphi0_dM[0])/omval,
+                 - dtanDip_dM[1]*(phip-phi00)/omval
+                 + tanDip()*domega_dM[1]*(phip-phi00)/(omval*omval)
+                 - tanDip()*(px/(py*py+px*px)-dphi0_dM[1])/omval,
+                 - dtanDip_dM[2]*(phip-phi00)/omval);
 
-    SVEC3 dz0_dM(0,0,0);
+    SVEC3 dt0_dM(dz0_dM[0]*E/(CLHEP::c_light*pz)
+                 +px*z0()/(CLHEP::c_light*pz*E),
+                 dz0_dM[1]*E/(CLHEP::c_light*pz)
+                 +py*z0()/(CLHEP::c_light*pz*E),
+                 (pz*dz0_dM[2]*E*E-z0()*(E*E-pz*pz))/(CLHEP::c_light*pz*pz*E));
 
     DPDV dPdM;
     dPdM.Place_in_row(dd0_dM,d0_,0);
@@ -304,18 +301,35 @@ namespace KinKal {
 
   DPDV CentralHelix::dPardXLoc(double time) const {
     // euclidean space is column, parameter space is row
-    SVEC3 dd0_dX (0,0,0);
-    SVEC3 dz0_dX (0,0,0);
-    SVEC3 dphi0_dX (0,0,0);
-    SVEC3 dt0_dX (0,0,0);
+    MOM4 mom = momentum(time);
+    VEC3 pos = position(time);
+    double phip = atan2(mom.y(),mom.x());
+    double cosphip = cos(phip);
+    double sinphip = sin(phip);
+    double cx = pos.x()-sinphip/omega();
+    double cy = pos.y()+cosphip/omega();
+    double sphi0 = sin(phi0());
+    double cphi0 = cos(phi0());
+
+    DPDV dPdX;
+
+    if(fabs(sphi0)>0.5) {
+      SVEC3 dd0_dX (-1./sphi0,0,0);
+      dPdX.Place_in_row(dd0_dX,d0_,0);
+    } else {
+      SVEC3 dd0_dX (0,1./cphi0,0);
+      dPdX.Place_in_row(dd0_dX,d0_,0);
+    }
+
+    SVEC3 dphi0_dX (-cy/(cx*cx+cy*cy),cx/(cx*cx+cy*cy),0);
+    SVEC3 dz0_dX (dphi0_dX[0]*tanDip()/omega(),dphi0_dX[1]*tanDip()/omega(),1);
+    SVEC3 dt0_dX (dz0_dX[0]/vz(),dz0_dX[1]/vz(),-1./vz());
     SVEC3 domega_dX (0,0,0);
     SVEC3 dtanDip_dX (0,0,0);
-    DPDV dPdX;
-    dPdX.Place_in_row(dd0_dX,d0_,0); // TODO
-    dPdX.Place_in_row(dphi0_dX,phi0_,0); // TODO
-    dPdX.Place_in_row(domega_dX,omega_,0); // TODO
+    dPdX.Place_in_row(dphi0_dX,phi0_,0);
+    dPdX.Place_in_row(domega_dX,omega_,0);
     dPdX.Place_in_row(dz0_dX,z0_,0); // TODO
-    dPdX.Place_in_row(dtanDip_dX,tanDip_,0); // TODO
+    dPdX.Place_in_row(dtanDip_dX,tanDip_,0);
     dPdX.Place_in_row(dt0_dX,t0_,0); // TODO
     return dPdX;
   }
@@ -332,8 +346,8 @@ namespace KinKal {
     double sang = sin(phi00+omval*l);
     double cang = cos(phi00+omval*l);
     SVEC3 dX_dd0 (-sin(phi00), cos(phi00), 0);
-    SVEC3 dX_dphi0 (1./omval*cang - (1./omval+d0val)*cang,
-                    1./omval*sang - (1./omval+d0val)*sang,
+    SVEC3 dX_dphi0 (cang/omval - (1./omval+d0val)*cos(phi00),
+                    sang/omval - (1./omval+d0val)*sin(phi00),
                     0);
     SVEC3 dX_domega ((l*omval*cang - sang + sin(phi00))/omval/omval,
                      (l*omval*sang + cang - cos(phi00))/omval/omval,
